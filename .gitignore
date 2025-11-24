@@ -1,0 +1,25 @@
+# Auto-generated files from monitoring
+# Note: website-status/ is NOT ignored - workflow commits files there
+screenshots/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
