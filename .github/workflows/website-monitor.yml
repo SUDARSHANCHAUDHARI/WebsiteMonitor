@@ -351,6 +351,59 @@ jobs:
       if: always()
       run: rm -f monitor.js
 
+    - name: Display monitoring results
+      if: always()
+      run: |
+        if [ -f website-status/status.json ]; then
+          echo "## 📊 Website Monitoring Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          STATUS=$(cat website-status/status.json | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+          IS_UP=$(cat website-status/status.json | grep -o '"isUp":[^,]*' | cut -d':' -f2)
+          URL=$(cat website-status/status.json | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
+          FINAL_URL=$(cat website-status/status.json | grep -o '"finalUrl":"[^"]*"' | cut -d'"' -f4)
+          STATUS_CODE=$(cat website-status/status.json | grep -o '"statusCode":[^,]*' | cut -d':' -f2)
+          LOAD_TIME=$(cat website-status/status.json | grep -o '"loadTime":[^,]*' | cut -d':' -f2)
+          REDIRECTED=$(cat website-status/status.json | grep -o '"redirectedToAuth":[^,]*' | cut -d':' -f2)
+          ERROR=$(cat website-status/status.json | grep -o '"error":"[^"]*"' | cut -d'"' -f4 || echo "null")
+          
+          if [ "$IS_UP" = "true" ]; then
+            echo "### ✅ Website Status: **UP** - Running Fine!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🟢 **Status:** $STATUS" >> $GITHUB_STEP_SUMMARY
+            echo "🌐 **URL:** $URL" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 **Final URL:** $FINAL_URL" >> $GITHUB_STEP_SUMMARY
+            echo "📊 **Status Code:** $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
+            echo "⏱️ **Load Time:** ${LOAD_TIME}ms" >> $GITHUB_STEP_SUMMARY
+            if [ "$REDIRECTED" = "true" ]; then
+              echo "✅ **Redirected to Auth:** Yes (Expected)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Website is active and running fine!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Website Status: **DOWN** - Issue Detected!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🔴 **Status:** $STATUS" >> $GITHUB_STEP_SUMMARY
+            echo "🌐 **URL:** $URL" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 **Final URL:** $FINAL_URL" >> $GITHUB_STEP_SUMMARY
+            echo "📊 **Status Code:** $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
+            echo "⏱️ **Load Time:** ${LOAD_TIME}ms" >> $GITHUB_STEP_SUMMARY
+            if [ "$ERROR" != "null" ] && [ -n "$ERROR" ]; then
+              echo "❌ **Error:** $ERROR" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Website is down - alerts have been sent!**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "📸 Screenshots available in artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "📄 Full status details in \`website-status/status.json\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "## ⚠️ Status file not found" >> $GITHUB_STEP_SUMMARY
+          echo "Could not read status.json file" >> $GITHUB_STEP_SUMMARY
+        fi
+
     - name: Upload screenshots
       uses: actions/upload-artifact@v4
       if: always()
@@ -428,7 +481,55 @@ jobs:
             labels: ['website-down', 'alert', 'automated']
           });
 
-    - name: Send Slack notification (Bot Token)
+    - name: Send success notification to Slack (optional)
+      if: success() && secrets.SLACK_BOT_TOKEN != '' && secrets.SLACK_CHANNEL != ''
+      run: |
+        if [ -z "${{ secrets.SLACK_BOT_TOKEN }}" ] || [ -z "${{ secrets.SLACK_CHANNEL }}" ]; then
+          exit 0
+        fi
+        
+        # Only send success notification if SLACK_SUCCESS_NOTIFICATIONS is set to 'true'
+        if [ "${{ secrets.SLACK_SUCCESS_NOTIFICATIONS }}" != "true" ]; then
+          echo "Success notifications disabled (set SLACK_SUCCESS_NOTIFICATIONS=true to enable)"
+          exit 0
+        fi
+        
+        STATUS_DATA=$(cat website-status/status.json 2>/dev/null || echo '{}')
+        FINAL_URL=$(echo "$STATUS_DATA" | grep -o '"finalUrl":"[^"]*"' | cut -d'"' -f4 || echo "N/A")
+        LOAD_TIME=$(echo "$STATUS_DATA" | grep -o '"loadTime":[^,]*' | cut -d':' -f2 || echo "N/A")
+        
+        curl -X POST https://slack.com/api/chat.postMessage \
+          -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "channel": "${{ secrets.SLACK_CHANNEL }}",
+            "text": "✅ Website Monitor: All Systems Operational",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "✅ Website Status: UP"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Website:* https://start.screencloud.com/\n*Status:* UP ✅\n*Final URL:* '"$FINAL_URL"'\n*Load Time:* '"$LOAD_TIME"ms'\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nWebsite is running fine and active! ✅"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                }
+              }
+            ]
+          }' || echo "Failed to send success notification"
+
+    - name: Send Slack notification (Bot Token) - Website Down
       if: failure()
       run: |
         if [ -z "${{ secrets.SLACK_BOT_TOKEN }}" ] || [ -z "${{ secrets.SLACK_CHANNEL }}" ]; then
