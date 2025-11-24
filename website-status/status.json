@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-11-24T05:56:15.283Z",
+  "url": "https://start.screencloud.com/",
+  "finalUrl": "https://auth.screencloud.com/login",
+  "isUp": true,
+  "status": "UP",
+  "statusCode": 200,
+  "statusText": "N/A",
+  "loadTime": 4489,
+  "title": "Login to ScreenCloud",
+  "redirectedToAuth": true,
+  "error": null,
+  "checkDuration": 5016
+}
