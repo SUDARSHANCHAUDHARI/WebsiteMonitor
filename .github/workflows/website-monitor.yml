@@ -1,0 +1,525 @@
+name: Website Monitor & Screenshot
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allow manual trigger
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Playwright
+      run: |
+        npm init -y
+        npm install playwright
+        npx playwright install chromium
+        npx playwright install-deps chromium
+
+    - name: Create monitoring script
+      run: |
+        cat > monitor.js << 'EOF'
+        const { chromium } = require('playwright');
+        const fs = require('fs');
+
+        const WEBSITE_URL = 'https://start.screencloud.com/';
+        const TIMEOUT = 30000; // 30 seconds
+        const SCREENSHOT_DIR = 'website-status';
+
+        async function monitor() {
+          let browser;
+          let statusCode = 0;
+          let statusText = '';
+          let loadTime = null;
+          let title = '';
+          let errorMessage = '';
+          let isUp = false;
+          const timestamp = new Date().toISOString();
+          const startTime = Date.now(); // Move outside try block so it's accessible in catch
+          
+          // Ensure directory exists
+          await fs.promises.mkdir(SCREENSHOT_DIR, { recursive: true });
+          
+          try {
+            console.log(`🔍 Checking website: ${WEBSITE_URL}`);
+            
+            browser = await chromium.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            const context = await browser.newContext({
+              viewport: { width: 1920, height: 1080 },
+              ignoreHTTPSErrors: false
+            });
+            
+            const page = await context.newPage();
+            
+            // Set up error handlers
+            page.on('pageerror', (error) => {
+              console.warn(`⚠️  Page error: ${error.message}`);
+            });
+            
+            page.on('requestfailed', (request) => {
+              console.warn(`⚠️  Request failed: ${request.url()} - ${request.failure()?.errorText}`);
+            });
+            
+            // Navigate to the website with comprehensive error handling
+            let response;
+            try {
+              response = await page.goto(WEBSITE_URL, {
+                waitUntil: 'networkidle',
+                timeout: TIMEOUT
+              });
+              
+              loadTime = Date.now() - startTime;
+              statusCode = response.status();
+              statusText = response.statusText();
+              
+              console.log(`✓ Response received`);
+              console.log(`✓ Status Code: ${statusCode} ${statusText}`);
+              console.log(`✓ Load Time: ${loadTime}ms`);
+              
+            } catch (navError) {
+              loadTime = Date.now() - startTime;
+              
+              // Handle specific error types
+              if (navError.message.includes('timeout') || navError.message.includes('Navigation timeout')) {
+                errorMessage = `Navigation timeout after ${TIMEOUT}ms`;
+                console.error(`❌ ${errorMessage}`);
+              } else if (navError.message.includes('net::ERR_SSL') || navError.message.includes('SSL')) {
+                errorMessage = `SSL/TLS error: ${navError.message}`;
+                console.error(`❌ ${errorMessage}`);
+              } else if (navError.message.includes('net::ERR_NAME_NOT_RESOLVED')) {
+                errorMessage = `DNS resolution failed: ${navError.message}`;
+                console.error(`❌ ${errorMessage}`);
+              } else if (navError.message.includes('net::ERR_CONNECTION_REFUSED')) {
+                errorMessage = `Connection refused: ${navError.message}`;
+                console.error(`❌ ${errorMessage}`);
+              } else {
+                errorMessage = `Navigation error: ${navError.message}`;
+                console.error(`❌ ${errorMessage}`);
+              }
+              
+              // Try to get response if available
+              try {
+                response = navError.response;
+                if (response) {
+                  statusCode = response.status();
+                  statusText = response.statusText();
+                }
+              } catch (e) {
+                // No response available
+              }
+            }
+            
+            // Get final URL after redirects
+            let finalUrl = '';
+            let redirectedToAuth = false;
+            try {
+              finalUrl = page.url();
+              console.log(`✓ Final URL after redirects: ${finalUrl}`);
+              
+              // Check if redirected to auth.screencloud.com (this is expected and valid)
+              if (finalUrl.includes('auth.screencloud.com')) {
+                redirectedToAuth = true;
+                console.log(`✅ Successfully redirected to auth.screencloud.com (expected behavior)`);
+              }
+            } catch (e) {
+              console.warn(`⚠️  Could not get final URL: ${e.message}`);
+              finalUrl = WEBSITE_URL;
+            }
+            
+            // Get page title
+            try {
+              title = await page.title();
+              console.log(`✓ Page Title: ${title || '(empty)'}`);
+            } catch (e) {
+              console.warn(`⚠️  Could not retrieve page title: ${e.message}`);
+            }
+            
+            // Get page content for error detection
+            let bodyText = '';
+            try {
+              bodyText = await page.textContent('body', { timeout: 5000 }) || '';
+              console.log(`✓ Page content retrieved (${bodyText.length} characters)`);
+            } catch (e) {
+              console.warn(`⚠️  Could not retrieve page content: ${e.message}`);
+            }
+            
+            // Check HTTP status code (2xx and 3xx are considered successful)
+            if (statusCode >= 200 && statusCode < 400) {
+              // Check for specific error messages in page content (even with 200 status)
+              const errorPatterns = [
+                '404 Not Found',
+                'NoSuchBucket',
+                'Code: NoSuchBucket'
+              ];
+              
+              let foundError = false;
+              for (const pattern of errorPatterns) {
+                if (bodyText.includes(pattern)) {
+                  isUp = false;
+                  errorMessage = `Page contains error: "${pattern}"`;
+                  console.error(`❌ ${errorMessage}`);
+                  foundError = true;
+                  break;
+                }
+              }
+              
+              // If redirected to auth.screencloud.com, it's definitely UP
+              if (!foundError && redirectedToAuth) {
+                isUp = true;
+                console.log(`✅ HTTP status indicates website is accessible and redirected correctly`);
+              } 
+              // If still on start.screencloud.com, check for errors
+              else if (!foundError && finalUrl.includes('start.screencloud.com')) {
+                // Check if page is empty
+                if (!bodyText || bodyText.trim().length === 0) {
+                  isUp = false;
+                  errorMessage = 'Page loaded but appears to be empty (no body content)';
+                  console.error(`❌ ${errorMessage}`);
+                } else {
+                  isUp = true;
+                  console.log(`✅ HTTP status indicates website is accessible`);
+                }
+              }
+              // If redirected somewhere else, check for errors
+              else if (!foundError) {
+                isUp = true;
+                console.log(`✅ HTTP status indicates website is accessible`);
+              }
+            } else if (statusCode >= 400) {
+              isUp = false;
+              errorMessage = errorMessage || `HTTP ${statusCode} ${statusText}`;
+              console.error(`❌ HTTP error status: ${statusCode} ${statusText}`);
+            } else if (statusCode === 0) {
+              isUp = false;
+              // Error message already set above
+            }
+            
+            // Take timestamped screenshot
+            const screenshotTimestamp = timestamp.replace(/[:.]/g, '-');
+            const timestampedScreenshot = `${SCREENSHOT_DIR}/screenshot-${screenshotTimestamp}.png`;
+            
+            try {
+              await page.screenshot({ 
+                path: timestampedScreenshot,
+                fullPage: true 
+              });
+              console.log(`✓ Timestamped screenshot saved: ${timestampedScreenshot}`);
+            } catch (screenshotError) {
+              console.error(`❌ Failed to save timestamped screenshot: ${screenshotError.message}`);
+            }
+            
+            // Save latest screenshot
+            try {
+              await page.screenshot({ 
+                path: `${SCREENSHOT_DIR}/latest.png`,
+                fullPage: true 
+              });
+              console.log(`✓ Latest screenshot saved: ${SCREENSHOT_DIR}/latest.png`);
+            } catch (screenshotError) {
+              console.error(`❌ Failed to save latest screenshot: ${screenshotError.message}`);
+            }
+            
+            await browser.close();
+            
+            // Create comprehensive status report
+            const report = {
+              timestamp: timestamp,
+              url: WEBSITE_URL,
+              finalUrl: finalUrl || WEBSITE_URL,
+              isUp: isUp,
+              status: isUp ? 'UP' : 'DOWN',
+              statusCode: statusCode,
+              statusText: statusText || 'N/A',
+              loadTime: loadTime,
+              title: title || 'N/A',
+              redirectedToAuth: redirectedToAuth,
+              error: errorMessage || null,
+              checkDuration: Date.now() - startTime
+            };
+            
+            await fs.promises.writeFile(
+              `${SCREENSHOT_DIR}/status.json`,
+              JSON.stringify(report, null, 2)
+            );
+            
+            console.log(`\n📊 Status Report:`);
+            console.log(JSON.stringify(report, null, 2));
+            
+            if (!isUp) {
+              console.error(`\n❌ Website Check Failed: ${errorMessage || 'Unknown error'}`);
+              process.exit(1);
+            }
+            
+            console.log(`\n✅ Website is healthy and accessible!`);
+            process.exit(0);
+            
+          } catch (error) {
+            console.error(`\n❌ Critical error during monitoring: ${error.message}`);
+            console.error(`Stack trace: ${error.stack}`);
+            
+            // Try to capture error screenshot if browser is still available
+            if (browser) {
+              try {
+                const errorPage = await browser.newPage();
+                await errorPage.goto(WEBSITE_URL, { 
+                  timeout: 10000,
+                  waitUntil: 'domcontentloaded'
+                }).catch(() => {
+                  console.warn('Could not navigate for error screenshot');
+                });
+                
+                await errorPage.screenshot({ 
+                  path: `${SCREENSHOT_DIR}/error-screenshot.png`,
+                  fullPage: true 
+                });
+                console.log(`✓ Error screenshot saved: ${SCREENSHOT_DIR}/error-screenshot.png`);
+                
+                await browser.close();
+              } catch (e) {
+                console.error(`Could not capture error screenshot: ${e.message}`);
+                try {
+                  await browser.close();
+                } catch (closeError) {
+                  // Ignore close errors
+                }
+              }
+            }
+            
+            // Save error status report
+            const errorReport = {
+              timestamp: timestamp,
+              url: WEBSITE_URL,
+              finalUrl: finalUrl || WEBSITE_URL,
+              isUp: false,
+              status: 'DOWN',
+              statusCode: statusCode || 0,
+              statusText: 'Error',
+              loadTime: loadTime,
+              title: title || 'N/A',
+              redirectedToAuth: redirectedToAuth,
+              error: error.message,
+              checkDuration: Date.now() - startTime
+            };
+            
+            try {
+              await fs.promises.writeFile(
+                `${SCREENSHOT_DIR}/status.json`,
+                JSON.stringify(errorReport, null, 2)
+              );
+            } catch (writeError) {
+              console.error(`Failed to write error report: ${writeError.message}`);
+            }
+            
+            process.exit(1);
+          }
+        }
+
+        monitor().catch((error) => {
+          console.error(`Unhandled error: ${error.message}`);
+          process.exit(1);
+        });
+        EOF
+
+    - name: Run website check and capture screenshot
+      id: monitor
+      continue-on-error: true
+      run: node monitor.js
+
+    - name: Cleanup temporary files
+      if: always()
+      run: rm -f monitor.js
+
+    - name: Upload screenshots
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: website-screenshots-${{ github.run_number }}
+        path: website-status/
+        retention-days: 30
+
+    - name: Commit latest screenshot to repo
+      if: always()
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        git add website-status/ || true
+        git diff --staged --quiet || git commit -m "Update website status [skip ci]"
+        git push || echo "Push failed (may be no changes)"
+
+    - name: Check for open issues
+      if: failure()
+      id: check_issues
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'website-down'
+          });
+          
+          core.setOutput('no_open_issues', issues.length === 0);
+
+    - name: Send notification on failure
+      if: failure() && steps.check_issues.outputs.no_open_issues == 'true'
+      # Note: Linter warning is false positive - check_issues step only runs on failure, so output exists
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          let statusData = {};
+          try {
+            statusData = JSON.parse(fs.readFileSync('website-status/status.json', 'utf8'));
+          } catch (e) {
+            console.log('Could not read status.json');
+          }
+          
+          const issue_body = `## 🚨 Website Monitor Alert
+          
+          **Website:** ${statusData.url || 'https://start.screencloud.com/'}
+          **Final URL:** ${statusData.finalUrl || statusData.url || 'N/A'}
+          **Status:** ${statusData.status || 'DOWN'}
+          **Time:** ${statusData.timestamp || new Date().toISOString()}
+          
+          ### Details
+          - **Status Code:** ${statusData.statusCode || 'N/A'}
+          - **Error:** ${statusData.error || 'Unknown error'}
+          - **Load Time:** ${statusData.loadTime ? statusData.loadTime + 'ms' : 'N/A'}
+          - **Redirected to Auth:** ${statusData.redirectedToAuth ? 'Yes ✅' : 'No ❌'}
+          
+          ### Screenshots
+          Check the workflow artifacts or the \`website-status/\` folder for screenshots.
+          
+          ### Workflow Run
+          [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ---
+          *This issue was automatically created by the Website Monitor workflow.*`;
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Website Down: ${statusData.url || 'https://start.screencloud.com/'}`,
+            body: issue_body,
+            labels: ['website-down', 'alert', 'automated']
+          });
+
+    - name: Send Slack notification (Bot Token)
+      if: failure()
+      run: |
+        if [ -z "${{ secrets.SLACK_BOT_TOKEN }}" ] || [ -z "${{ secrets.SLACK_CHANNEL }}" ]; then
+          echo "Slack credentials not configured, skipping notification"
+          exit 0
+        fi
+        
+        curl -X POST https://slack.com/api/chat.postMessage \
+          -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "channel": "${{ secrets.SLACK_CHANNEL }}",
+            "text": "🚨 Website Monitoring Alert",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚨 Website Down"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Website:* https://start.screencloud.com/\n*Status:* DOWN ❌\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nCheck GitHub Actions for details."
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                }
+              }
+            ]
+          }'
+
+    # Slack Webhook method (commented out - using Bot Token instead)
+    # - name: Send Slack notification (Webhook)
+    #   if: failure() && secrets.SLACK_WEBHOOK_URL != '' && secrets.SLACK_BOT_TOKEN == ''
+    #   run: |
+    #     curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+    #       -H 'Content-Type: application/json' \
+    #       -d '{
+    #         "text": "🚨 Website Monitoring Alert",
+    #         "blocks": [
+    #           {
+    #             "type": "header",
+    #             "text": {
+    #               "type": "plain_text",
+    #               "text": "🚨 Website Down"
+    #             }
+    #           },
+    #           {
+    #             "type": "section",
+    #             "text": {
+    #               "type": "mrkdwn",
+    #               "text": "*Website:* https://start.screencloud.com/\n*Status:* DOWN\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nCheck GitHub Actions for details."
+    #             }
+    #           },
+    #           {
+    #             "type": "section",
+    #             "text": {
+    #               "type": "mrkdwn",
+    #               "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+    #             }
+    #           }
+    #         ]
+    #       }'
+
+    # Email notification (commented out - using Slack instead)
+    # - name: Send email notification (optional)
+    #   if: failure()
+    #   uses: dawidd6/action-send-mail@v3
+    #   with:
+    #     server_address: smtp.gmail.com
+    #     server_port: 587
+    #     username: ${{ secrets.EMAIL_USERNAME }}
+    #     password: ${{ secrets.EMAIL_PASSWORD }}
+    #     subject: '🚨 Website Down: https://start.screencloud.com/'
+    #     body: |
+    #       Website Monitor Alert
+    #       
+    #       URL: https://start.screencloud.com/
+    #       Status: DOWN
+    #       Time: ${{ github.event.head_commit.timestamp }}
+    #       
+    #       View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    #       
+    #       Please investigate immediately.
+    #     to: ${{ secrets.ALERT_EMAIL }}
+    #     from: GitHub Actions
+
