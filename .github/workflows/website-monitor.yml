@@ -3,7 +3,7 @@ name: Website Monitor & Screenshot
 on:
   schedule:
     # Run every 15 minutes
-    - cron: '*/15 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch: # Allow manual trigger
   push:
     branches: [ main ]
@@ -264,19 +264,23 @@ jobs:
               JSON.stringify(report, null, 2)
             );
             
-            console.log(`\n📊 Status Report:`);
+            console.log(`
+📊 Status Report:`);
             console.log(JSON.stringify(report, null, 2));
             
             if (!isUp) {
-              console.error(`\n❌ Website Check Failed: ${errorMessage || 'Unknown error'}`);
+              console.error(`
+❌ Website Check Failed: ${errorMessage || 'Unknown error'}`);
               process.exit(1);
             }
             
-            console.log(`\n✅ Website is healthy and accessible!`);
+            console.log(`
+✅ Website is healthy and accessible!`);
             process.exit(0);
             
           } catch (error) {
-            console.error(`\n❌ Critical error during monitoring: ${error.message}`);
+            console.error(`
+❌ Critical error during monitoring: ${error.message}`);
             console.error(`Stack trace: ${error.stack}`);
             
             // Try to capture error screenshot if browser is still available
@@ -516,7 +520,13 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Website:* https://start.screencloud.com/\n*Status:* UP ✅\n*Final URL:* '"$FINAL_URL"'\n*Load Time:* '"$LOAD_TIME"ms'\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nWebsite is running fine and active! ✅"
+                  "text": "*Website:* https://start.screencloud.com/
+*Status:* UP ✅
+*Final URL:* '"$FINAL_URL"'
+*Load Time:* '"$LOAD_TIME"ms'
+*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'
+
+Website is running fine and active! ✅"
                 }
               },
               {
@@ -555,7 +565,11 @@ jobs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*Website:* https://start.screencloud.com/\n*Status:* DOWN ❌\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nCheck GitHub Actions for details."
+                  "text": "*Website:* https://start.screencloud.com/
+*Status:* DOWN ❌
+*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'
+
+Check GitHub Actions for details."
                 }
               },
               {
@@ -588,7 +602,11 @@ jobs:
     #             "type": "section",
     #             "text": {
     #               "type": "mrkdwn",
-    #               "text": "*Website:* https://start.screencloud.com/\n*Status:* DOWN\n*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'\n\nCheck GitHub Actions for details."
+    #               "text": "*Website:* https://start.screencloud.com/
+*Status:* DOWN
+*Time:* '"$(date -u +"%Y-%m-%d %H:%M:%S UTC")"'
+
+Check GitHub Actions for details."
     #             }
     #           },
     #           {
@@ -623,4 +641,3 @@ jobs:
     #       Please investigate immediately.
     #     to: ${{ secrets.ALERT_EMAIL }}
     #     from: GitHub Actions
-
