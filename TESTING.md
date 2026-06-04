@@ -69,7 +69,7 @@ Test Slack integration:
 
 ```bash
 # Set your credentials
-export SLACK_BOT_TOKEN="xoxb-your-token-here"
+export SLACK_BOT_TOKEN="YOUR_SLACK_BOT_TOKEN"
 export SLACK_CHANNEL="#alerts"
 
 # Make script executable
@@ -206,4 +206,3 @@ Once all tests pass:
 2. Push to GitHub
 3. Add secrets in GitHub (Settings → Secrets → Actions)
 4. Test workflow manually in GitHub Actions tab
-
