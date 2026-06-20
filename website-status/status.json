@@ -1,14 +1,14 @@
 {
-  "timestamp": "2025-11-24T06:06:10.559Z",
-  "url": "https://start.screencloud.com/",
-  "finalUrl": "https://auth.screencloud.com/login",
-  "isUp": true,
-  "status": "UP",
-  "statusCode": 200,
+  "timestamp": null,
+  "url": null,
+  "finalUrl": null,
+  "isUp": null,
+  "status": "NO_DATA",
+  "statusCode": 0,
   "statusText": "N/A",
-  "loadTime": 3846,
-  "title": "Login to ScreenCloud",
-  "redirectedToAuth": true,
-  "error": null,
-  "checkDuration": 4410
+  "loadTime": null,
+  "title": "N/A",
+  "redirected": false,
+  "error": "No check has run yet. Run: WEBSITE_URL=https://your-site.com node monitor.js",
+  "checkDuration": 0
 }

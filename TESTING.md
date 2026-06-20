@@ -1,208 +1,114 @@
 # Local Testing Guide
 
-Test the website monitor locally before pushing to GitHub.
+Run the monitor against any URL on your machine before wiring it into a schedule.
 
 ## Prerequisites
 
-Install Node.js and Playwright:
-
 ```bash
-# Install Node.js dependencies
-npm install playwright
+# Installs Playwright and (via postinstall) the Chromium browser
+npm install
 
-# Install Chromium browser
+# If the browser didn't install automatically:
 npx playwright install chromium
 ```
 
-## Test 1: Monitor Website (Main Script)
+## Test 1: Check a website
 
-Test the core monitoring functionality:
+`tests/test-local.js` runs the same logic as `monitor.js`, but writes to
+`./screenshots` so it doesn't touch the tracked `website-status/` folder.
 
 ```bash
-node tests/test-local.js
+WEBSITE_URL=https://your-site.com node tests/test-local.js
+# or
+node tests/test-local.js https://your-site.com
 ```
 
 **What it does:**
-- ✅ Checks if website is accessible
-- ✅ Takes screenshots
-- ✅ Generates status.json
-- ✅ Shows detailed logs
+- Checks the site is reachable
+- Captures screenshots
+- Writes `screenshots/status.json`
+- Prints detailed logs
 
-**Expected output:**
+**Expected output (UP):**
 ```
-🔍 Starting website monitoring check...
-📍 URL: https://start.screencloud.com/
-⏱️  Timeout: 30000ms
-✓ Response received
+🔍 Checking website: https://your-site.com
 ✓ Status Code: 200 OK
 ✓ Load Time: 1234ms
+✓ Final URL: https://your-site.com/
 ✅ HTTP status indicates website is accessible
-✓ Page Title: ScreenCloud - Start
-✓ Page content verified (12345 characters)
-✓ Timestamped screenshot saved: screenshots/screenshot-2024-01-01T12-00-00-000Z.png
-✓ Latest screenshot saved: screenshots/latest.png
 
 📊 Status Report:
-{
-  "timestamp": "2024-01-01T12:00:00.000Z",
-  "url": "https://start.screencloud.com/",
-  "isUp": true,
-  "status": "UP",
-  "statusCode": 200,
-  ...
-}
+{ "url": "https://your-site.com", "isUp": true, "status": "UP", ... }
 
 ✅ Website is healthy and accessible!
 ```
 
-**Check results:**
-- Look in `screenshots/` folder for:
-  - `latest.png` - Latest screenshot
-  - `status.json` - Status report
-  - `screenshot-*.png` - Timestamped screenshots
+Check the `screenshots/` folder for `latest.png`, the timestamped PNG, and `status.json`.
 
-## Test 2: Slack Notification
+## Test 2: Simulate a site that's down
 
-Test Slack integration:
-
-### Using Bot Token (Recommended)
+Point it at a host that doesn't resolve to confirm error handling:
 
 ```bash
-# Set your credentials
-export SLACK_BOT_TOKEN="YOUR_SLACK_BOT_TOKEN"
-export SLACK_CHANNEL="#alerts"
-
-# Make script executable
-chmod +x tests/test-slack.sh
-
-# Run test
-./tests/test-slack.sh
-```
-
-### Using Webhook URL
-
-```bash
-# Set webhook URL
-export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-
-# Run test
-./tests/test-slack.sh
-```
-
-**Expected output:**
-```
-🧪 Testing Slack Notification...
-📤 Using Bot Token method...
-Token: xoxb-1234... (hidden)
-Channel: #alerts
-
-Response: {"ok":true,"ts":"1234567890.123456","channel":"C1234567890",...}
-✅ Success! Check your Slack channel for the test message.
-```
-
-**Check Slack:**
-- You should see a test message in your channel
-- If you see it, your integration is working! ✅
-
-## Test 3: Simulate Website Down
-
-Test error handling by checking a non-existent site:
-
-```bash
-# Temporarily modify tests/test-local.js to use a bad URL
-# Change: const WEBSITE_URL = 'https://start.screencloud.com/';
-# To:     const WEBSITE_URL = 'https://this-site-does-not-exist-12345.com/';
-
-node tests/test-local.js
+node tests/test-local.js https://this-site-does-not-exist-12345.example
 ```
 
 **Expected output:**
 ```
 ❌ DNS resolution failed: net::ERR_NAME_NOT_RESOLVED
-❌ Website Check Failed: DNS resolution failed
+❌ Website Check Failed: DNS resolution failed ...
 ```
 
-This verifies error handling works correctly.
+Exit code will be `1`.
 
-## Test 4: Full Workflow Simulation
+## Test 3: Detect content errors
 
-Test the complete flow:
+Use `ERROR_PATTERNS` to flag a page that returns `200` but renders an error
+(e.g. a broken static host):
 
 ```bash
-# 1. Run monitoring
-node tests/test-local.js
+ERROR_PATTERNS="404 Not Found,NoSuchBucket" \
+  node tests/test-local.js https://your-site.com
+```
 
-# 2. Check if website is down (exit code 1 = down, 0 = up)
-if [ $? -ne 0 ]; then
-  echo "Website is down - would trigger notifications"
-  # 3. Test Slack notification
-  ./tests/test-slack.sh
-else
-  echo "Website is up - no notifications needed"
-fi
+If any pattern appears in the page body, the site is reported as DOWN.
+
+## Test 4: Slack notification
+
+```bash
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_CHANNEL="#alerts"
+
+# Notify on down (default) — point at a dead host to trigger it
+node tests/test-local.js https://this-site-does-not-exist-12345.example
+
+# Or confirm the happy path too
+SLACK_NOTIFY_ON_SUCCESS=true node tests/test-local.js https://your-site.com
+```
+
+A standalone Slack smoke test is also available:
+
+```bash
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_CHANNEL="#alerts"
+./tests/test-slack.sh
 ```
 
 ## Troubleshooting
 
-### Playwright Installation Issues
-
+### Playwright install issues
 ```bash
-# If npx playwright install fails, try:
 npm install -g playwright
 playwright install chromium
-
-# Or use system package manager:
-# macOS
-brew install --cask chromium
-
-# Linux
-sudo apt-get install chromium-browser
+# macOS: brew install --cask chromium
+# Linux: sudo apt-get install chromium-browser
 ```
 
-### Screenshots Not Saving
+### Screenshots not saving
+- Verify the output directory is writable
+- Check available disk space: `df -h`
 
-- Check `screenshots/` directory exists
-- Verify write permissions: `chmod 755 screenshots/`
-- Check disk space: `df -h`
-
-### Slack Test Fails
-
-**Bot Token Issues:**
-- Verify token starts with `xoxb-`
-- Check bot has `chat:write` permission
-- Ensure bot is invited to channel (or has `chat:write.public`)
-
-**Webhook Issues:**
-- Verify URL format: `https://hooks.slack.com/services/T.../B.../...`
-- Check webhook is still active in Slack app settings
-
-## What to Check Before Pushing
-
-✅ **Monitoring script works:**
-```bash
-node tests/test-local.js
-# Should complete successfully and create screenshots
-```
-
-✅ **Slack notification works:**
-```bash
-./tests/test-slack.sh
-# Should send test message to Slack
-```
-
-✅ **Error handling works:**
-- Test with invalid URL (should handle gracefully)
-- Check error screenshots are created
-
-✅ **Files are correct:**
-- `.github/workflows/website-monitor.yml` exists
-- `README.md` is up to date
-- No sensitive data in code (use secrets)
-
-## Ready to Push!
-
-Once all tests pass:
-1. Commit your changes
-2. Push to GitHub
-3. Add secrets in GitHub (Settings → Secrets → Actions)
-4. Test workflow manually in GitHub Actions tab
+### Slack test fails
+- Bot token must start with `xoxb-`
+- Bot needs the `chat:write` scope and must be invited to the channel
+  (or have `chat:write.public`)
