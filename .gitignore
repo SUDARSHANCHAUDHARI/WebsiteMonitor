@@ -1,5 +1,6 @@
 # Auto-generated files from monitoring
-# Note: website-status/ is NOT ignored - workflow commits files there
+# Note: website-status/ is tracked so the latest status/screenshot stays visible.
+# The screenshots/ dir is produced by local test runs and is ignored.
 screenshots/
 
 # Node.js
