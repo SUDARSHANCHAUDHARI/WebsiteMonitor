@@ -8,8 +8,9 @@
   },
   "scripts": {
     "monitor": "node monitor.js",
-    "test": "node tests/test-local.js",
-    "postinstall": "playwright install chromium"
+    "test": "node --test tests/unit.test.js",
+    "test:live": "node tests/test-local.js",
+    "playwright:install": "playwright install chromium"
   },
   "keywords": [
     "website-monitor",

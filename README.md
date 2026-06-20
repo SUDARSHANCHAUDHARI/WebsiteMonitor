@@ -12,15 +12,20 @@ It's a plain Node.js + [Playwright](https://playwright.dev/) script — run it l
 ## Quick start
 
 ```bash
-# 1. Install dependencies (Playwright + Chromium)
+# 1. Install Node dependencies
 npm install
 
-# 2. Run a check against your URL
+# 2. Install the Chromium browser binary (one-time, ~150 MB)
+npm run playwright:install
+
+# 3. Run a check against your URL
 WEBSITE_URL=https://your-site.com node monitor.js
 
 # …or pass the URL as an argument
 node monitor.js https://your-site.com
 ```
+
+Copy `.env.example` to `.env` if you prefer to manage config there.
 
 Exit code is `0` when the site is **UP** and `1` when it's **DOWN**, so it slots straight into scripts and schedulers.
 
@@ -109,13 +114,19 @@ WEBSITE_URL=https://your-site.com node monitor.js
 
 By default Slack is notified only when the site is **down**. Set `SLACK_NOTIFY_ON_SUCCESS=true` to also get UP confirmations.
 
-## Local testing
+## Testing
 
-`tests/test-local.js` runs the exact same logic against a URL of your choice, writing to `./screenshots` so it doesn't touch the tracked `website-status/` folder. See [TESTING.md](TESTING.md).
+Two suites, split by what they need:
 
 ```bash
-WEBSITE_URL=https://your-site.com node tests/test-local.js
+# Offline unit tests for config parsing — no Chromium required.
+npm test
+
+# Live end-to-end check against a real URL — needs Chromium installed.
+WEBSITE_URL=https://your-site.com npm run test:live
 ```
+
+`tests/test-local.js` runs the exact same logic as `monitor.js` against a URL of your choice, writing to `./screenshots` so it doesn't touch the tracked `website-status/` folder. See [TESTING.md](TESTING.md).
 
 ## License
 
