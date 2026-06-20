@@ -1,0 +1,25 @@
+{
+  "name": "website-monitor",
+  "version": "2.0.0",
+  "description": "Generic website uptime monitor with screenshot capture and optional Slack alerts. Point it at any URL.",
+  "main": "monitor.js",
+  "bin": {
+    "website-monitor": "monitor.js"
+  },
+  "scripts": {
+    "monitor": "node monitor.js",
+    "test": "node tests/test-local.js",
+    "postinstall": "playwright install chromium"
+  },
+  "keywords": [
+    "website-monitor",
+    "uptime",
+    "playwright",
+    "screenshot",
+    "monitoring"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
