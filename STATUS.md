@@ -39,3 +39,29 @@
 ## Deployment
 
 N/A in the traditional web-service sense — it's a **scheduled job**. Run via cron, GitHub Actions cron, or any scheduler. See README "Scheduling" section.
+
+## File-by-file checklist
+
+### Source
+- [x] `monitor.js` — entire app: `getConfig()`, `hostOf()`, `runMonitor()`, `maybeNotifySlack()`. Pure helpers exported for testing.
+
+### Tests
+- [x] `tests/unit.test.js` — 9 offline `node:test` units (overrides vs env, default timeout, ERROR_PATTERNS parsing, Slack settings, notifyOnSuccess flag)
+- [x] `tests/test-local.js` — original live Playwright check (`npm run test:live`)
+
+### Tooling
+- [x] `package.json` — scripts split (`test` offline, `test:live` browser, `playwright:install` explicit)
+- [x] Removed brittle `postinstall: playwright install chromium` hook
+- [x] `.env.example` covering all 8 env vars with defaults
+
+### Output
+- [x] Writes `latest.png`, `screenshot-<timestamp>.png`, `status.json` to `OUTPUT_DIR`
+
+### Quality
+- [x] 9 offline tests pass
+- [x] Live test passes once Chromium is installed (`npm run playwright:install`)
+
+### Not done
+- [ ] Schedule it (cron / systemd / GitHub Actions cron / Docker scheduler — README covers all options)
+- [ ] Optional: notification destinations beyond Slack (Discord, email, PagerDuty)
+- [ ] Optional: persisted history view (each run overwrites `latest.png`)
