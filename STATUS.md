@@ -65,3 +65,23 @@ N/A in the traditional web-service sense — it's a **scheduled job**. Run via c
 - [ ] Schedule it (cron / systemd / GitHub Actions cron / Docker scheduler — README covers all options)
 - [ ] Optional: notification destinations beyond Slack (Discord, email, PagerDuty)
 - [ ] Optional: persisted history view (each run overwrites `latest.png`)
+
+## Categorized work remaining
+
+| Item | Effort | Bucket | Blocker | Priority |
+|------|--------|--------|---------|----------|
+| Schedule the monitor | ~15m | 🔑 Needs hosting/scheduler | pick one: your cron, a systemd timer, GitHub Actions cron, or any cloud scheduler | P1 |
+| Add Discord / email / PagerDuty notifiers | ~2h each | 🟦 Pure code | none — extend `maybeNotifySlack()` pattern | P3 |
+| Persist screenshot history | ~half day | 🟦 Pure code | none — keep timestamped files instead of overwriting `latest.png` | P3 |
+
+## Release plan
+
+1. **Pick a scheduler** (most likely: a GitHub Actions cron workflow in this repo, or your existing cron host).
+2. **Set the URL + optional Slack creds in the scheduler's environment.**
+3. **Run once manually:** `WEBSITE_URL=https://your-site npm run monitor` — confirms `status.json` + screenshot land in `OUTPUT_DIR`.
+4. **Tag release:** `gh release create v2.0.0 --title "WebsiteMonitor v2.0.0 — generic URL uptime monitor"` (v2 because the README badge already says 2.0.0).
+
+### Deploy prerequisites
+- Some scheduler (free options: GitHub Actions cron, your existing crontab)
+- Optional: `SLACK_BOT_TOKEN` + `SLACK_CHANNEL` for alerts
+- Optional: customize `ERROR_PATTERNS` / `EXPECTED_URL_CONTAINS` per target
