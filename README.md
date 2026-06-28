@@ -128,6 +128,10 @@ WEBSITE_URL=https://your-site.com npm run test:live
 
 `tests/test-local.js` runs the exact same logic as `monitor.js` against a URL of your choice, writing to `./screenshots` so it doesn't touch the tracked `website-status/` folder. See [TESTING.md](TESTING.md).
 
+## Author
+
+Built by **Sudarshan Chaudhari** — SudarshanTechLabs.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
